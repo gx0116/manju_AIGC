@@ -1,0 +1,17 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: manju-gateway
+  cloud:
+    nacos:
+      server-addr: localhost:8848
+    gateway:
+      routes:
+        - id: user
+          uri: lb://user-service
+          predicates:
+            - Path=/users/**
+            - Path=/users/**
+  profiles:
+    active: dev
