@@ -1,0 +1,7 @@
+mj:
+  db:
+    host: 192.168.100.128 # 修改虚拟机IP地址
+    port: 3306
+    database: mj_user
+    un: root
+    pw: 123456 # 修改为docker中的MySQL密码

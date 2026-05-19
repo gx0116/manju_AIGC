@@ -1,0 +1,7 @@
+mj:
+  db:
+    host: mysql
+    port: 3306
+    database: mj_user
+    un: root
+    pw: 123456
