@@ -5,5 +5,5 @@ import com.mj.user.domain.po.User;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface SysUserMapper extends BaseMapper<User> {
+public interface UserMapper extends BaseMapper<User> {
 }
