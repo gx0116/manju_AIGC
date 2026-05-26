@@ -12,3 +12,4 @@ spring:
     import: #导入nacos配置
       - nacos:shared-jdbc.yaml
       - nacos:shared-log.yaml
+      - nacos:shared-redis.yaml

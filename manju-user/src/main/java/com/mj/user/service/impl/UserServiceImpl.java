@@ -10,11 +10,13 @@ import com.mj.user.service.IUserService;
 import com.mj.user.utils.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 用户服务实现类
@@ -26,6 +28,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
@@ -61,6 +64,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userLoginVO.setToken(token);
 
         log.info("用户登录成功: {}", username);
+
+        long remainingTTL = jwtUtils.getRemainingTTL(token);
+        Long userId = jwtUtils.getUserId(token);
+        log.info("用户登出成功，userId: {}, token 将在 {}ms 后失效", userId, remainingTTL);
+        System.out.println("token");
+        System.out.println();
+        System.out.println(token);
+
         return userLoginVO;
     }
 
@@ -114,8 +125,31 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public List<User> queryAllUsers() {
-        return this.list();
+    public User profile(String token) {
+        User user = lambdaQuery().eq(User::getId, jwtUtils.getUserId(token)).one();
+        return user;
+    }
+
+    @Override
+    public void logout(String token) {// 1. 验证 Token 是否有效
+        if (!jwtUtils.validateToken(token)) {
+            log.warn("登出失败，Token 无效或已过期");
+            throw new RuntimeException("Token 无效或已过期");
+        }
+
+        // 2. 获取 Token 剩余有效时间
+        long remainingTTL = jwtUtils.getRemainingTTL(token);
+        if (remainingTTL <= 0) {
+            log.warn("登出失败，Token 已过期");
+            throw new RuntimeException("Token 已过期");
+        }
+
+        // 3. 将 Token 加入 Redis 黑名单，过期时间与 Token 剩余有效期一致
+        String blacklistKey = "jwt:blacklist:" + token;
+        stringRedisTemplate.opsForValue().set(blacklistKey, "1", remainingTTL, TimeUnit.MILLISECONDS);
+
+        Long userId = jwtUtils.getUserId(token);
+        log.info("用户登出成功，userId: {}, token 将在 {}ms 后失效", userId, remainingTTL);
     }
 
 }

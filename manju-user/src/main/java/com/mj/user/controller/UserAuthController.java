@@ -41,11 +41,24 @@ public class UserAuthController {
     }
 
     /**
+     * 用户登出
+     */
+    @PostMapping("/logout")
+    public Result<?> logout(@RequestHeader("Authorization") String authHeader) {
+        // 移除 "Bearer " 前缀获取 token
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        userService.logout(token);
+        return Result.success();
+    }
+
+    /**
      * 查询所有用户
      */
     @GetMapping("/profile")
-    public Result<List<User>> getAllUsers() {
-        List<User> users = userService.queryAllUsers();
-        return Result.success(users);
+    public Result<User> profile(@RequestHeader("Authorization") String authHeader) {
+        // 移除 "Bearer " 前缀获取 token
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        User user = userService.profile(token);
+        return Result.success(user);
     }
 }
