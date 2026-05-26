@@ -2,6 +2,7 @@ package com.mj.user.controller;
 
 import com.mj.common.domain.Result;
 import com.mj.user.domain.dto.UserLoginDTO;
+import com.mj.user.domain.dto.UserRegisterDTO;
 import com.mj.user.domain.po.User;
 import com.mj.user.domain.vo.UserLoginVO;
 import com.mj.user.service.IUserService;
@@ -28,6 +29,15 @@ public class UserAuthController {
     public Result<UserLoginVO> login(@Valid @RequestBody UserLoginDTO userLoginDTO) {
         UserLoginVO loginVO = userService.login(userLoginDTO);
         return Result.success(loginVO);
+    }
+
+    /**
+     * 用户注册
+     */
+    @PostMapping("/register")
+    public Result register(@Valid @RequestBody UserRegisterDTO userRegisterDTO) {
+        userService.register(userRegisterDTO);
+        return Result.success();
     }
 
     /**

@@ -2,6 +2,7 @@ package com.mj.user.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mj.user.domain.dto.UserLoginDTO;
+import com.mj.user.domain.dto.UserRegisterDTO;
 import com.mj.user.domain.po.User;
 import com.mj.user.domain.vo.UserLoginVO;
 import com.mj.user.mapper.UserMapper;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -24,11 +26,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
-
-    @Override
-    public List<User> queryAllUsers() {
-        return this.list();
-    }
 
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
@@ -66,4 +63,59 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         log.info("用户登录成功: {}", username);
         return userLoginVO;
     }
+
+    @Override
+    public void register(UserRegisterDTO userRegisterDTO) {
+        String username = userRegisterDTO.getUsername();
+        String password = userRegisterDTO.getPassword();
+        String phone = userRegisterDTO.getPhone();
+        String email = userRegisterDTO.getEmail();
+
+        // 1. 检查用户名是否已存在
+        Long usernameCount = lambdaQuery().eq(User::getUsername, username).count();
+        if (usernameCount > 0) {
+            log.warn("注册失败，用户名已存在: {}", username);
+            throw new RuntimeException("用户名已被注册");
+        }
+
+        // 2. 检查手机号是否已被占用
+        if (phone != null && !phone.isBlank()) {
+            Long phoneCount = lambdaQuery().eq(User::getPhone, phone).count();
+            if (phoneCount > 0) {
+                log.warn("注册失败，手机号已被占用: {}", phone);
+                throw new RuntimeException("该手机号已被注册");
+            }
+        }
+
+        // 3. 检查邮箱是否已被占用
+        if (email != null && !email.isBlank()) {
+            Long emailCount = lambdaQuery().eq(User::getEmail, email).count();
+            if (emailCount > 0) {
+                log.warn("注册失败，邮箱已被占用: {}", email);
+                throw new RuntimeException("该邮箱已被注册");
+            }
+        }
+
+        // 4. BCrypt 加密密码
+        String encodedPassword = passwordEncoder.encode(password);
+
+        // 5. 构建用户对象并保存
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword(encodedPassword);
+        user.setPhone(phone);
+        user.setEmail(email);
+        user.setStatus(1); // 默认正常状态
+        user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+
+        save(user);
+        log.info("用户注册成功: {}", username);
+    }
+
+    @Override
+    public List<User> queryAllUsers() {
+        return this.list();
+    }
+
 }
