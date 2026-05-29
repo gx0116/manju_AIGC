@@ -1,0 +1,12 @@
+mj:
+  db:
+    host: 192.168.100.128 # 修改虚拟机IP地址
+    port: 3306
+    database: mj_task
+    un: root
+    pw: 123456 # 修改为docker中的MySQL密码
+  redis:
+    host: 192.168.100.128 # 修改虚拟机IP地址
+    port: 6379
+    password: 123456
+    database: 0

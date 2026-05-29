@@ -1,8 +1,2 @@
 server:
-  port: 8085
-spring:
-  application:
-    name: task-service
-  cloud:
-    nacos:
-      server-addr: localhost:8848 # nacos地址
+  port: 8084

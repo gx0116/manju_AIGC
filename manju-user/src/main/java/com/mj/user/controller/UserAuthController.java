@@ -44,10 +44,8 @@ public class UserAuthController {
      * 用户登出
      */
     @PostMapping("/logout")
-    public Result<?> logout(@RequestHeader("Authorization") String authHeader) {
-        // 移除 "Bearer " 前缀获取 token
-        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
-        userService.logout(token);
+    public Result<?> logout() {
+        userService.logout();
         return Result.success();
     }
 

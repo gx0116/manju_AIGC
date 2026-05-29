@@ -1,22 +1,20 @@
 package com.mj.user.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.mj.common.context.UserContext;
 import com.mj.user.domain.dto.UserLoginDTO;
 import com.mj.user.domain.dto.UserRegisterDTO;
 import com.mj.user.domain.po.User;
 import com.mj.user.domain.vo.UserLoginVO;
 import com.mj.user.mapper.UserMapper;
 import com.mj.user.service.IUserService;
-import com.mj.user.utils.JwtUtils;
+import com.mj.common.utils.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 用户服务实现类
@@ -29,6 +27,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final StringRedisTemplate stringRedisTemplate;
+    private final UserContext userContext;
 
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
@@ -131,25 +130,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public void logout(String token) {// 1. 验证 Token 是否有效
-        if (!jwtUtils.validateToken(token)) {
-            log.warn("登出失败，Token 无效或已过期");
-            throw new RuntimeException("Token 无效或已过期");
-        }
-
-        // 2. 获取 Token 剩余有效时间
-        long remainingTTL = jwtUtils.getRemainingTTL(token);
-        if (remainingTTL <= 0) {
-            log.warn("登出失败，Token 已过期");
-            throw new RuntimeException("Token 已过期");
-        }
-
-        // 3. 将 Token 加入 Redis 黑名单，过期时间与 Token 剩余有效期一致
-        String blacklistKey = "jwt:blacklist:" + token;
-        stringRedisTemplate.opsForValue().set(blacklistKey, "1", remainingTTL, TimeUnit.MILLISECONDS);
-
-        Long userId = jwtUtils.getUserId(token);
-        log.info("用户登出成功，userId: {}, token 将在 {}ms 后失效", userId, remainingTTL);
+    public void logout() {
+        Long userId = userContext.getUserId();
+        log.info("用户登出成功，userId: {}", userId);
     }
 
 }

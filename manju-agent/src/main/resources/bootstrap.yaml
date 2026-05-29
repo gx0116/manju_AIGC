@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: agent-service #服务名
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      server-addr: 192.168.100.128:8848 #nacos地址
+      config:
+        file-extension: yaml
+  config:
+    import: #导入nacos配置
+      - nacos:shared-jdbc.yaml
+      - nacos:shared-log.yaml
+#      - nacos:shared-redis.yaml

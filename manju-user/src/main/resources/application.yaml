@@ -1,5 +1,5 @@
 server:
-  port: 8086
+  port: 8085
 # JWT 配置
 mj:
   jwt:

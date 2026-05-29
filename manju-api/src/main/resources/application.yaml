@@ -1,8 +1,2 @@
 server:
   port: 8082
-spring:
-  application:
-    name: api-service
-  cloud:
-    nacos:
-      server-addr: localhost:8848 # nacos地址

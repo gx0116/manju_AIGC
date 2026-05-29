@@ -1,4 +1,4 @@
-package com.mj.user.utils;
+package com.mj.common.utils;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -42,7 +42,7 @@ public class JwtUtils {
 
     /**
      * 生成 JWT Token
-     * 
+     *
      * @param userId   用户ID，作为 Token 的主题（subject）
      * @param username 用户名，存储在自定义声明中
      * @return 生成的 JWT Token 字符串
@@ -64,7 +64,7 @@ public class JwtUtils {
 
     /**
      * 解析 Token 获取 Claims（声明信息）
-     * 
+     *
      * @param token JWT Token 字符串
      * @return Claims 对象，包含 Token 中的所有声明信息
      */
@@ -78,7 +78,7 @@ public class JwtUtils {
 
     /**
      * 从 Token 中获取用户ID
-     * 
+     *
      * @param token JWT Token 字符串
      * @return 用户ID
      */
@@ -89,7 +89,7 @@ public class JwtUtils {
 
     /**
      * 从 Token 中获取用户名
-     * 
+     *
      * @param token JWT Token 字符串
      * @return 用户名
      */
@@ -100,7 +100,7 @@ public class JwtUtils {
 
     /**
      * 验证 Token 是否有效
-     * 
+     *
      * @param token JWT Token 字符串
      * @return true 表示 Token 有效，false 表示 Token 无效或已过期
      */

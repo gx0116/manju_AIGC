@@ -14,7 +14,7 @@ public interface IUserService extends IService<User> {
 
     void register(UserRegisterDTO userRegisterDTO);
 
-    void logout(String token);
+    void logout();
 
     User profile(String token);
 }
