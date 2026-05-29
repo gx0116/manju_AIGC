@@ -15,3 +15,4 @@ spring:
 #      - nacos:shared-redis.yaml
       - nacos:ai-service.yaml
       - nacos:aigc-service.yaml
+      - nacos:prompt.config.yaml

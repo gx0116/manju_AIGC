@@ -27,7 +27,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final StringRedisTemplate stringRedisTemplate;
-    private final UserContext userContext;
 
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
@@ -131,7 +130,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public void logout() {
-        Long userId = userContext.getUserId();
+        Long userId = UserContext.getUserId();
         log.info("用户登出成功，userId: {}", userId);
     }
 

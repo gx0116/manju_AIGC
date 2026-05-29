@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
  * <b>注意：</b>请求结束后必须调用 {@link #clear()} 清理 ThreadLocal，
  * 防止线程复用时造成数据污染或内存泄漏。
  */
-@Component
 public class UserContext {
 
     private static final ThreadLocal<UserInfo> USER_HOLDER = new ThreadLocal<>();

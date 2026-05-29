@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.mj.common.context.UserContext;
 import com.mj.task.config.SessionProperties;
 import com.mj.task.domain.po.ChatSession;
 import com.mj.task.domain.vo.SessionVO;
@@ -32,10 +33,9 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         // 构建持久化对象，并持久化
         ChatSession chatSession = ChatSession.builder()
                 .sessionId(sessionVO.getSessionId())
-                //todo .userId(UserContext.getUser())
-                .userId(11L)
-                .creater(11L)
-                .updater(11L)
+                .userId(UserContext.getUserId())
+                .creater(UserContext.getUserId())
+                .updater(UserContext.getUserId())
                 .build();
         super.save(chatSession);
 

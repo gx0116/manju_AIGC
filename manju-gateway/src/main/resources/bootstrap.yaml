@@ -15,7 +15,7 @@ spring:
         - id: task
           uri: lb://task-service
           predicates:
-            - Path=/generate/**,/session/**
+            - Path=/generate/**,/session/**,/chat/**
   config:
     import: #导入nacos配置
       - nacos:shared-log.yaml

@@ -18,22 +18,22 @@
     </properties>
 
     <dependencies>
-        <!-- Spring AI BOM -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-bom</artifactId>
-            <version>${spring-ai.version}</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-        <!-- Alibaba AI BOM -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-bom</artifactId>
-            <version>1.0.0.2</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
+<!--        &lt;!&ndash; Spring AI BOM &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.ai</groupId>-->
+<!--            <artifactId>spring-ai-bom</artifactId>-->
+<!--            <version>${spring-ai.version}</version>-->
+<!--            <type>pom</type>-->
+<!--            <scope>import</scope>-->
+<!--        </dependency>-->
+<!--        &lt;!&ndash; Alibaba AI BOM &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>com.alibaba.cloud.ai</groupId>-->
+<!--            <artifactId>spring-ai-alibaba-bom</artifactId>-->
+<!--            <version>1.0.0.2</version>-->
+<!--            <type>pom</type>-->
+<!--            <scope>import</scope>-->
+<!--        </dependency>-->
         <!--common-->
         <dependency>
             <groupId>com.hgx</groupId>
