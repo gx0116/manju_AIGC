@@ -1,5 +1,6 @@
 package com.mj.task.controller;
 
+import com.mj.common.domain.Result;
 import com.mj.task.domain.dto.ChatDTO;
 import com.mj.task.domain.vo.ChatEventVO;
 import com.mj.common.annotations.NoWrapper;
@@ -29,7 +30,7 @@ public class ChatController {
 
     @PostMapping("/stop")
     public void stop(@RequestParam("sessionId") String sessionId) {
-        this.chatService.stop(sessionId);
+        chatService.stop(sessionId);
     }
 
     /**
@@ -38,8 +39,9 @@ public class ChatController {
      * @return 对话记录列表
      */
     @GetMapping("/{sessionId}")
-    public List<MessageVO> queryBySessionId(@PathVariable("sessionId") String sessionId) {
-        return this.chatService.queryBySessionId(sessionId);
+    public Result<List<MessageVO>> queryBySessionId(@PathVariable("sessionId") String sessionId) {
+        List<MessageVO> messageVOS = chatService.queryBySessionId(sessionId);
+        return Result.success(messageVOS);
     }
 
 }

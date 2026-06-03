@@ -20,7 +20,7 @@ public class SessionController {
      */
     @PostMapping
     public SessionVO createSession(@RequestParam(value = "n", defaultValue = "3") Integer num) {
-        return this.chatSessionService.createSession(num);
+        return chatSessionService.createSession(num);
     }
 
 }

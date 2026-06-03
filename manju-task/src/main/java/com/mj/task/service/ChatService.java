@@ -32,7 +32,7 @@ public interface ChatService {
      * @return 对话id
      */
     static String getConversationId(String sessionId) {
-        return null;
+        return UserContext.getUserId() + "_" + sessionId;
     }
 
     /**
