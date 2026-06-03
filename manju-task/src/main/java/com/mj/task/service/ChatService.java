@@ -2,7 +2,10 @@ package com.mj.task.service;
 
 import com.mj.common.context.UserContext;
 import com.mj.task.domain.vo.ChatEventVO;
+import com.mj.task.domain.vo.MessageVO;
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 public interface ChatService {
 
@@ -29,7 +32,14 @@ public interface ChatService {
      * @return 对话id
      */
     static String getConversationId(String sessionId) {
-        return UserContext.getUserId() + "_" + sessionId;
+        return null;
     }
 
+    /**
+     * 根据会话id查询消息列表
+     *
+     * @param sessionId 会话id
+     * @return 消息列表
+     */
+    List<MessageVO> queryBySessionId(String sessionId);
 }

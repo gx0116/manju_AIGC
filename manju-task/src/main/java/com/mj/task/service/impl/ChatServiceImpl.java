@@ -1,17 +1,23 @@
 package com.mj.task.service.impl;
 
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.stream.StreamUtil;
 import com.mj.task.config.SystemPromptConfig;
 import com.mj.task.domain.vo.ChatEventVO;
+import com.mj.task.domain.vo.MessageVO;
 import com.mj.task.enums.ChatEventTypeEnum;
+import com.mj.task.enums.MessageTypeEnum;
 import com.mj.task.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,6 +31,8 @@ public class ChatServiceImpl implements ChatService {
     // 存储大模型的生成状态，这里采用ConcurrentHashMap是确保线程安全
     // 目前的版本暂时用Map实现，如果考虑分布式环境的话，可以考虑用redis来实现
     private static final Map<String, Boolean> GENERATE_STATUS = new ConcurrentHashMap<>();
+
+    private final ChatMemory chatMemory;
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
@@ -65,6 +73,24 @@ public class ChatServiceImpl implements ChatService {
     public void stop(String sessionId) {
         // 移除标记
         GENERATE_STATUS.remove(sessionId);
+    }
+
+    @Override
+    public List<MessageVO> queryBySessionId(String sessionId) {
+        // 根据会话ID获取对话ID
+        String conversationId = ChatService.getConversationId(sessionId);
+        // 从Redis中获取历史消息
+        List<Message> messageList = this.chatMemory.get(conversationId);
+        // 过滤并转换消息列表
+        return StreamUtil.of(messageList)
+                // 过滤掉非用户消息和助手消息
+                .filter(message -> message.getMessageType() == MessageType.ASSISTANT || message.getMessageType() == MessageType.USER)
+                // 转换为MessageVO对象
+                .map(message -> MessageVO.builder()
+                        .content(message.getText())
+                        .type(MessageTypeEnum.valueOf(message.getMessageType().name()))
+                        .build())
+                .toList();
     }
 
 }

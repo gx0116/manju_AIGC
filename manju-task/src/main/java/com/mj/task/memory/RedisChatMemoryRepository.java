@@ -1,5 +1,6 @@
 package com.mj.task.memory;
 
+import cn.hutool.core.collection.CollStreamUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.stream.StreamUtil;
 import cn.hutool.core.util.StrUtil;
@@ -7,6 +8,7 @@ import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.data.redis.core.BoundListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.List;
 import java.util.Set;
@@ -47,8 +49,15 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
 
     @Override
     public List<Message> findByConversationId(String conversationId) {
-        // 先不实现
-        return List.of();
+        // 生成Redis键名用于存储会话消息
+        String redisKey = this.getKey(conversationId);
+        // 获取Redis列表操作对象
+        BoundListOperations<String, String> listOps = this.stringRedisTemplate.boundListOps(redisKey);
+
+        // 从Redis列表中获取所有的数据
+        List<String> messages = listOps.range(0, -1);
+        // 将Redis返回的字符串列表转换为Message对象列表
+        return CollStreamUtil.toList(messages, MessageUtil::toMessage);
     }
 
     @Override
@@ -71,4 +80,5 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
     private String getKey(String conversationId) {
         return prefix + conversationId;
     }
+
 }

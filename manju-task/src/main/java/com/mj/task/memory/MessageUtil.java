@@ -55,6 +55,7 @@ public class MessageUtil {
 //                return new AssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls());
                 return AssistantMessage.builder()
                         .content(myMessage.getTextContent())
+                        .media(myMessage.getMedia())
                         .toolCalls(myMessage.getToolCalls())
                         .build();
             }
