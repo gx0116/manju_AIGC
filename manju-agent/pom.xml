@@ -27,7 +27,7 @@
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
-            <version>1.1.2.0</version>
+            <version>${spring-ai.alibaba.version}</version>
         </dependency>
         <!--feign模块-->
         <dependency>
@@ -85,6 +85,31 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- Spring AI 向量存储增强工具包：提供自动切分、向量化、向量库操作等增强能力 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+        <!-- Spring AI 官方 Elasticsearch 向量数据库启动器
+             用于 Spring Boot 自动集成 Elasticsearch 向量存储、相似度检索（RAG核心）-->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-elasticsearch</artifactId>
+            <exclusions>
+                <!-- 排除该启动器自带的 elasticsearch-java 客户端，避免版本冲突/不兼容 -->
+                <exclusion>
+                    <groupId>co.elastic.clients</groupId>
+                    <artifactId>elasticsearch-java</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Elasticsearch 官方 Java 客户端
+             手动指定 8.15.5 版本，匹配服务端 ES 版本，解决依赖冲突 -->
+        <dependency>
+            <groupId>co.elastic.clients</groupId>
+            <artifactId>elasticsearch-java</artifactId>
+            <version>8.15.5</version>
         </dependency>
     </dependencies>
 

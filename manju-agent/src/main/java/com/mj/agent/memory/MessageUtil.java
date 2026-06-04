@@ -52,19 +52,19 @@ public class MessageUtil {
                         .build();
             }
             case ASSISTANT -> {
-//                return new AssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls());
-                return AssistantMessage.builder()
-                        .content(myMessage.getTextContent())
-                        .media(myMessage.getMedia())
-                        .toolCalls(myMessage.getToolCalls())
-                        .build();
+                return new AssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls());
+//                return AssistantMessage.builder()
+//                        .content(myMessage.getTextContent())
+//                        .media(myMessage.getMedia())
+//                        .toolCalls(myMessage.getToolCalls())
+//                        .build();
             }
             case TOOL -> {
-//                return new ToolResponseMessage(myMessage.getToolResponses(), myMessage.getMetadata());
-                return ToolResponseMessage.builder()
-                        .responses(myMessage.getToolResponses())
-                        .metadata(myMessage.getMetadata())
-                        .build();
+                return new ToolResponseMessage(myMessage.getToolResponses(), myMessage.getMetadata());
+//                return ToolResponseMessage.builder()
+//                        .responses(myMessage.getToolResponses())
+//                        .metadata(myMessage.getMetadata())
+//                        .build();
             }
         }
 
