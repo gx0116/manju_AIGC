@@ -10,12 +10,3 @@ mj:
     port: 6379
     password: 123456
     database: 0
-  ai:
-    prompt:
-      system:
-        chat:
-          data-id: system-chat--message.txt
-          group: DEFAULT_GROUP
-          timeout-ms: 20000
-    memory:
-      max: 100

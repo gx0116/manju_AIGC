@@ -13,7 +13,7 @@ spring:
           predicates:
             - Path=/auth/**
         - id: task
-          uri: lb://task-service
+          uri: lb://agent-service
           predicates:
             - Path=/generate/**,/session/**,/chat/**
   config:
