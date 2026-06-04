@@ -8,6 +8,8 @@ import com.mj.agent.domain.vo.MessageVO;
 import com.mj.agent.enums.ChatEventTypeEnum;
 import com.mj.agent.enums.MessageTypeEnum;
 import com.mj.agent.service.ChatService;
+import com.mj.agent.service.ChatSessionService;
+import com.mj.common.context.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -37,6 +39,7 @@ public class ChatServiceImpl implements ChatService {
 
     private final ChatMemory chatMemory;
     private final VectorStore vectorStore;
+    private final ChatSessionService chatSessionService;
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
@@ -47,6 +50,9 @@ public class ChatServiceImpl implements ChatService {
         QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor.builder(this.vectorStore)
                 .searchRequest(SearchRequest.builder().similarityThreshold(0.6d).topK(6).build())
                 .build();
+        // 更新会话信息
+        chatSessionService.update(sessionId, question, UserContext.getUserId());
+
 
         return this.chatClient.prompt()
                 .system(promptSystemSpec -> promptSystemSpec

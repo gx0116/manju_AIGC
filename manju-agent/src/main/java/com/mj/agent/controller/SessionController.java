@@ -1,12 +1,13 @@
 package com.mj.agent.controller;
 
+import com.mj.agent.domain.vo.ChatSessionVO;
 import com.mj.agent.domain.vo.SessionVO;
 import com.mj.agent.service.ChatSessionService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/session")
@@ -21,6 +22,19 @@ public class SessionController {
     @PostMapping
     public SessionVO createSession(@RequestParam(value = "n", defaultValue = "3") Integer num) {
         return chatSessionService.createSession(num);
+    }
+
+    /**
+     * 查询历史会话列表
+     */
+    @GetMapping("/history")
+    public Map<String, List<ChatSessionVO>> queryHistorySession() {
+        return chatSessionService.queryHistorySession();
+    }
+
+    @DeleteMapping("/history")
+    public void deleteSession(@RequestParam String sessionId) {
+        chatSessionService.deleteHistorySession(sessionId);
     }
 
 }
