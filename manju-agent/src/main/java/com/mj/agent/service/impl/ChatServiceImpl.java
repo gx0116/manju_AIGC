@@ -1,8 +1,12 @@
 package com.mj.agent.service.impl;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.stream.StreamUtil;
+import cn.hutool.core.util.IdUtil;
 import com.mj.agent.config.SystemPromptConfig;
+import com.mj.agent.config.ToolResultHolder;
+import com.mj.agent.constants.Constant;
 import com.mj.agent.domain.vo.ChatEventVO;
 import com.mj.agent.domain.vo.MessageVO;
 import com.mj.agent.enums.ChatEventTypeEnum;
@@ -40,19 +44,22 @@ public class ChatServiceImpl implements ChatService {
     private final ChatMemory chatMemory;
     private final VectorStore vectorStore;
     private final ChatSessionService chatSessionService;
+    // 输出结束的标记
+    private static final ChatEventVO STOP_EVENT = ChatEventVO.builder().eventType(ChatEventTypeEnum.STOP.getValue()).build();
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
 
         // 获取对话id
         String conversationId = ChatService.getConversationId(sessionId);
+        // 创建请求ID
+        String requestId = IdUtil.fastSimpleUUID();
         // 创建RAG增强
         QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor.builder(this.vectorStore)
                 .searchRequest(SearchRequest.builder().similarityThreshold(0.6d).topK(6).build())
                 .build();
         // 更新会话信息
         chatSessionService.update(sessionId, question, UserContext.getUserId());
-
 
         return this.chatClient.prompt()
                 .system(promptSystemSpec -> promptSystemSpec
@@ -63,6 +70,7 @@ public class ChatServiceImpl implements ChatService {
                         //设置RAG增强
                         .advisors(qaAdvisor)
                         .param(ChatMemory.CONVERSATION_ID, conversationId))
+                .toolContext(Map.of(Constant.REQUEST_ID, requestId)) // 通过工具上下文传递参数
                 .user(question)
                 .stream()
                 .chatResponse()
@@ -81,9 +89,21 @@ public class ChatServiceImpl implements ChatService {
                             .eventType(ChatEventTypeEnum.DATA.getValue())
                             .build();
                 })
-                .concatWith(Flux.just(ChatEventVO.builder()  // 标记输出结束
-                        .eventType(ChatEventTypeEnum.STOP.getValue())
-                        .build()));
+                .concatWith(Flux.defer(() -> {
+                    // 通过请求id获取到参数列表，如果不为空，就将其追加到返回结果中
+                    Map<String, Object> map = ToolResultHolder.get(requestId);
+                    if (CollUtil.isNotEmpty(map)) {
+                        ToolResultHolder.remove(requestId); // 清除参数列表
+
+                        // 响应给前端的参数数据
+                        ChatEventVO chatEventVO = ChatEventVO.builder()
+                                .eventData(map)
+                                .eventType(ChatEventTypeEnum.PARAM.getValue())
+                                .build();
+                        return Flux.just(chatEventVO, STOP_EVENT);
+                    }
+                    return Flux.just(STOP_EVENT);
+                }));
     }
 
     @Override
