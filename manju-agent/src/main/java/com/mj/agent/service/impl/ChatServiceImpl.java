@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.stream.StreamUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import com.mj.agent.config.SystemPromptConfig;
 import com.mj.agent.config.ToolResultHolder;
 import com.mj.agent.constants.Constant;
@@ -11,6 +12,7 @@ import com.mj.agent.domain.vo.ChatEventVO;
 import com.mj.agent.domain.vo.MessageVO;
 import com.mj.agent.enums.ChatEventTypeEnum;
 import com.mj.agent.enums.MessageTypeEnum;
+import com.mj.agent.memory.MyAssistantMessage;
 import com.mj.agent.service.ChatService;
 import com.mj.agent.service.ChatSessionService;
 import com.mj.common.context.UserContext;
@@ -21,6 +23,7 @@ import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvi
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.MessageType;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
@@ -49,7 +52,6 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
-
         // 获取对话id
         String conversationId = ChatService.getConversationId(sessionId);
         // 创建请求ID
@@ -58,6 +60,7 @@ public class ChatServiceImpl implements ChatService {
         QuestionAnswerAdvisor qaAdvisor = QuestionAnswerAdvisor.builder(this.vectorStore)
                 .searchRequest(SearchRequest.builder().similarityThreshold(0.6d).topK(6).build())
                 .build();
+
         // 更新会话信息
         chatSessionService.update(sessionId, question, UserContext.getUserId());
 
@@ -81,6 +84,14 @@ public class ChatServiceImpl implements ChatService {
                     return GENERATE_STATUS.getOrDefault(sessionId, false);
                 })
                 .map(chatResponse -> {
+                    // 对于响应结果进行处理，如果是最后一条数据，就把此次消息id放到内存中
+                    // 主要用于存储消息数据到 redis中，可以根据消息id获取的请求id，再通过请求id就可以获取到参数列表了
+                    // 从而解决，在历史聊天记录中没有外参数的问题
+                    String finishReason = chatResponse.getResult().getMetadata().getFinishReason();
+                    if (StrUtil.equals(Constant.STOP, finishReason)) {
+                        String messageId = chatResponse.getMetadata().getId();
+                        ToolResultHolder.put(messageId, Constant.REQUEST_ID, requestId);
+                    }
                     // 获取大模型的输出的内容
                     String text = chatResponse.getResult().getOutput().getText();
                     // 封装响应对象
@@ -94,7 +105,6 @@ public class ChatServiceImpl implements ChatService {
                     Map<String, Object> map = ToolResultHolder.get(requestId);
                     if (CollUtil.isNotEmpty(map)) {
                         ToolResultHolder.remove(requestId); // 清除参数列表
-
                         // 响应给前端的参数数据
                         ChatEventVO chatEventVO = ChatEventVO.builder()
                                 .eventData(map)
@@ -123,10 +133,19 @@ public class ChatServiceImpl implements ChatService {
                 // 过滤掉非用户消息和助手消息
                 .filter(message -> message.getMessageType() == MessageType.ASSISTANT || message.getMessageType() == MessageType.USER)
                 // 转换为MessageVO对象
-                .map(message -> MessageVO.builder()
-                        .content(message.getText())
-                        .type(MessageTypeEnum.valueOf(message.getMessageType().name()))
-                        .build())
+                .map(message -> {
+                    if (message instanceof MyAssistantMessage) {
+                        return MessageVO.builder()
+                                .content(message.getText())
+                                .type(MessageTypeEnum.valueOf(message.getMessageType().name()))
+                                .params(((MyAssistantMessage) message).getParams())
+                                .build();
+                    }
+                    return MessageVO.builder()
+                            .content(message.getText())
+                            .type(MessageTypeEnum.valueOf(message.getMessageType().name()))
+                            .build();
+                })
                 .toList();
     }
 

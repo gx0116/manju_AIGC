@@ -1,2 +1,8 @@
 server:
   port: 8081
+logging:
+  level:
+    # 核心！打开向量库检索日志
+    org.springframework.ai.chat.client: DEBUG
+    org.springframework.ai.vectorstore: DEBUG
+    org.springframework.ai.chat.client.advisor.vectorstore: DEBUG

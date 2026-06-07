@@ -1,12 +1,20 @@
 package com.mj.agent.memory;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.convert.Convert;
+import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.json.JSONUtil;
+import com.mj.agent.config.ToolResultHolder;
+import com.mj.agent.constants.Constant;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.*;
+
+import java.util.Map;
 
 /**
  * 消息转换工具类，提供消息对象与JSON字符串之间的转换功能，主要用于Redis存储格式转换
  */
+@Slf4j
 public class MessageUtil {
 
     /**
@@ -21,13 +29,22 @@ public class MessageUtil {
         myMessage.setTextContent(message.getText());
         if (message instanceof AssistantMessage assistantMessage) {
             myMessage.setToolCalls(assistantMessage.getToolCalls());
+            // 通过 messageId 获取 requestId，再通过 requestId 获取参数列表，如果有，就存储起来
+            // 最后，删除 messageId 对应的数据
+            String messageId = Convert.toStr(assistantMessage.getMetadata().get(Constant.ID));
+            String requestId = Convert.toStr(ToolResultHolder.get(messageId, Constant.REQUEST_ID));
+            Map<String, Object> params = ToolResultHolder.get(requestId);
+            if (ObjectUtil.isNotEmpty(params)) {
+                myMessage.setParams(params);
+            }
+            ToolResultHolder.remove(messageId);
         }
 
         if (message instanceof ToolResponseMessage toolResponseMessage) {
             myMessage.setToolResponses(toolResponseMessage.getResponses());
         }
 
-        return JSONUtil.toJsonStr(myMessage);
+        return JSONUtil.toJsonStr(JSONUtil.toJsonStr(myMessage));
     }
 
     /**
@@ -52,19 +69,11 @@ public class MessageUtil {
                         .build();
             }
             case ASSISTANT -> {
-                return new AssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls());
-//                return AssistantMessage.builder()
-//                        .content(myMessage.getTextContent())
-//                        .media(myMessage.getMedia())
-//                        .toolCalls(myMessage.getToolCalls())
-//                        .build();
+//                return new AssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls());
+                return new MyAssistantMessage(myMessage.getTextContent(), myMessage.getMetadata(), myMessage.getToolCalls(), myMessage.getMedia(), myMessage.getParams());
             }
             case TOOL -> {
                 return new ToolResponseMessage(myMessage.getToolResponses(), myMessage.getMetadata());
-//                return ToolResponseMessage.builder()
-//                        .responses(myMessage.getToolResponses())
-//                        .metadata(myMessage.getMetadata())
-//                        .build();
             }
         }
 
