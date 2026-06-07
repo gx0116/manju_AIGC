@@ -1,6 +1,7 @@
 package com.mj.agent.config;
 
 import com.mj.agent.memory.RedisChatMemoryRepository;
+import com.mj.agent.tools.ComicDramaTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -24,9 +25,12 @@ public class SpringAIConfig {
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
                                  Advisor loggerAdvisor, // 日志记录器
-                                 Advisor messageChatMemoryAdvisor) {
+                                 Advisor messageChatMemoryAdvisor, // 基于 Redis 的会话记忆
+                                 ComicDramaTools comicDramaTools // 漫剧信息工具
+    ) {
         return chatClientBuilder
                 .defaultAdvisors(loggerAdvisor, messageChatMemoryAdvisor) //添加 Advisor 功能增强
+                .defaultTools(comicDramaTools) //添加默认工具
                 .build();
     }
 

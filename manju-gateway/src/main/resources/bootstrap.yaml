@@ -16,6 +16,10 @@ spring:
           uri: lb://agent-service
           predicates:
             - Path=/generate/**,/session/**,/chat/**,/embedding/**
+        - id: work
+          uri: lb://work-service
+          predicates:
+            - Path=/comicDrama/**
   config:
     import: #导入nacos配置
       - nacos:shared-log.yaml
