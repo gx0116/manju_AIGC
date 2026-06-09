@@ -24,6 +24,12 @@
             <artifactId>manju-common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
+        <!--api feign-->
+        <dependency>
+            <groupId>com.hgx</groupId>
+            <artifactId>manju-api</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
         <!--web-->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -48,6 +54,12 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+        <!--hutool工具包-->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>${hutool.version}</version>
         </dependency>
     </dependencies>
 

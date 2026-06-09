@@ -12,10 +12,18 @@ spring:
           uri: lb://user-service
           predicates:
             - Path=/auth/**
-        - id: task
+        - id: agent
           uri: lb://agent-service
           predicates:
-            - Path=/generate/**,/session/**,/chat/**,/embedding/**
+            - Path=/generate/**,/session/**,/chat/**,/embedding/**,/agent/**
+        - id: task
+          uri: lb://task-service
+          predicates:
+            - Path=/task/**
+        - id: media
+          uri: lb://media-service
+          predicates:
+            - Path=/media/**
         - id: work
           uri: lb://work-service
           predicates:

@@ -10,3 +10,6 @@ mj:
     port: 6379
     password: 123456
     database: 0
+  media:
+    ffmpeg-path: D:\software\ffmpeg\ffmpeg-2026-06-04-git-c27a3b12e3-essentials_build\bin\ffmpeg.exe
+    work-dir: D:\software\ffmpeg\manju-media

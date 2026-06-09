@@ -24,6 +24,12 @@
             <artifactId>manju-common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
+        <!--api feign-->
+        <dependency>
+            <groupId>com.hgx</groupId>
+            <artifactId>manju-api</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
         <!--nacos 服务注册发现-->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>

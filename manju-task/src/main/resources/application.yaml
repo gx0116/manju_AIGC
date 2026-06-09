@@ -1,2 +1,13 @@
 server:
   port: 8084
+spring:
+  rabbitmq:
+    host: 192.168.100.128
+    port: 5672
+    username: admin
+    password: 123456
+    virtual-host: /
+    # 发布确认
+    publisher-confirm-type: correlated
+    # 发布返回
+    publisher-returns: true

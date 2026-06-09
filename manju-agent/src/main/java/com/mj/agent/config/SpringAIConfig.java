@@ -10,8 +10,13 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.time.Duration;
 
 @Configuration
 public class SpringAIConfig {
@@ -20,7 +25,19 @@ public class SpringAIConfig {
     private Integer maxMessages;
 
     /**
-     * 配置 ChatClient
+     * RestClient 超时定制（DashScope API 通过 RestClient.Builder 构建，默认仅 10 秒）
+     */
+    @Bean
+    public RestClientCustomizer restClientTimeoutCustomizer() {
+        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.DEFAULTS
+                .withConnectTimeout(Duration.ofSeconds(30))
+                .withReadTimeout(Duration.ofMinutes(5));  // 分镜生成最长 5 分钟
+        return restClientBuilder -> restClientBuilder
+                .requestFactory(ClientHttpRequestFactories.get(settings));
+    }
+
+    /**
+     * 配置 ChatClient（聊天专用，带记忆）
      */
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder,
