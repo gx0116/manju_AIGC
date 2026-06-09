@@ -7,7 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @EnableFeignClients(basePackages = "com.mj.api.client", defaultConfiguration = DefaultFeignConfig.class)
-// 同时排除语音合成 + 语音转文字自动配置
+// 排除语音自动配置（Qwen-TTS使用新版multimodal-generation API，
+// 旧版SpeechSynthesisModel不兼容；ASR暂不需要）
 @SpringBootApplication(exclude = {
         com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration.class,
         com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration.class

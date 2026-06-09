@@ -1,6 +1,10 @@
 package com.mj.agent.service.impl;
 
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
+import cn.hutool.http.HttpUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mj.agent.config.SystemPromptConfig;
@@ -9,13 +13,17 @@ import com.mj.common.domain.ComicGenResultDTO;
 import com.mj.common.domain.StoryboardDTO;
 import com.mj.common.domain.TTSResultDTO;
 import com.mj.common.enums.ArtStyleEnum;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.image.ImageModel;
+import org.springframework.ai.image.ImagePrompt;
+import org.springframework.ai.image.ImageResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,12 +36,30 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgentServiceImpl implements AgentService {
 
     private final ChatClient.Builder chatClientBuilder;
     private final ObjectMapper objectMapper;
     private final SystemPromptConfig systemPromptConfig;
+    private final ImageModel imageModel;
+
+    /** DashScope API Key */
+    @Value("${spring.ai.dashscope.api-key:}")
+    private String dashScopeApiKey;
+
+    /** 媒体文件本地存储目录 */
+    @Value("${mj.media.storage-dir:/tmp/manju-media}")
+    private String storageDir;
+
+    public AgentServiceImpl(ChatClient.Builder chatClientBuilder,
+                            ObjectMapper objectMapper,
+                            SystemPromptConfig systemPromptConfig,
+                            ImageModel imageModel) {
+        this.chatClientBuilder = chatClientBuilder;
+        this.objectMapper = objectMapper;
+        this.systemPromptConfig = systemPromptConfig;
+        this.imageModel = imageModel;
+    }
 
     // ==================== ScriptAgent: 分镜生成 ====================
 
@@ -219,29 +245,37 @@ public class AgentServiceImpl implements AgentService {
     /**
      * 生成单张漫画图片
      * <p>
-     * 实际项目中调用Liblib API / DashScope 图像生成 / Stable Diffusion等
+     * 通过 Spring AI ImageModel 调用 DashScope 通义万相 wanx-v1 文生图API
      */
     private ComicGenResultDTO generateSingleComicImage(Long taskId, Integer index,
                                                         String imagePrompt, String style, String promptKey) {
-        // TODO: 替换为实际的图像生成API调用
-        // 示例：DashScope图像生成
-        // ImageResponse response = dashScopeImageService.generate(stylePrompt, imagePrompt);
-
-        // 当前返回模拟数据（开发阶段占位）
-        log.info("[EnhanceAgent-Comic] 调用图像生成API, taskId={}, index={}, promptKey={}",
-                taskId, index, promptKey);
+        long startTime = System.currentTimeMillis();
 
         // 构建增强的imagePrompt（加入画风修饰）
         String enhancedPrompt = enhanceImagePrompt(imagePrompt, style, promptKey);
 
-        // 模拟图像生成结果
+        log.info("[EnhanceAgent-Comic] 调用DashScope wanx-v1 图像生成, taskId={}, index={}, promptLen={}",
+                taskId, index, enhancedPrompt.length());
+
+        // ============ 实际 DashScope 图像生成调用 ============
+        // wanx-v1 是异步模型，DashScopeImageModel 内部通过 Spring Retry 自动轮询等待结果
+        ImageResponse response = imageModel.call(new ImagePrompt(enhancedPrompt));
+        String tempImageUrl = response.getResult().getOutput().getUrl();
+
+        // DashScope 返回的临时URL有效期较短，下载到本地存储
+        String localPath = downloadToLocalStorage(tempImageUrl, taskId, "comic", index);
+
+        long costTime = System.currentTimeMillis() - startTime;
+        log.info("[EnhanceAgent-Comic] 图像生成完成, taskId={}, index={}, localPath={}, costTime={}ms",
+                taskId, index, localPath, costTime);
+
         return ComicGenResultDTO.builder()
                 .taskId(taskId)
                 .sceneIndex(index)
-                .imageUrl(String.format("https://cdn.example.com/comic/%d/scene_%d.png", taskId, index))
-                .width(1920)
-                .height(1080)
-                .costTime(3000L)
+                .imageUrl(localPath)
+                .width(1024)
+                .height(1024)
+                .costTime(costTime)
                 .build();
     }
 
@@ -315,27 +349,145 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /**
-     * 调用TTS服务合成单段语音
+     * 调用DashScope Qwen-TTS 服务合成单段语音
      * <p>
-     * 实际项目中调用Azure TTS / DashScope TTS / 其他TTS服务
+     * 通过 HTTP 调用 multimodal-generation API（SpeechSynthesisModel 使用的是旧版 text-to-speech API，
+     * 不支持 qwen3-tts-vd/qwen3-tts-flash 等新模型）
      */
     private TTSResultDTO synthesizeSpeech(Long taskId, Integer index, String dialogue) {
-        // TODO: 替换为实际的TTS API调用
-        // 示例：Azure TTS
-        // AudioData audio = azureTTSService.synthesize(dialogue, voiceName="zh-CN-XiaoxiaoNeural");
+        long startTime = System.currentTimeMillis();
 
-        log.info("[EnhanceAgent-TTS] 调用TTS API, taskId={}, index={}, textLen={}",
+        log.info("[EnhanceAgent-TTS] 调用Qwen-TTS multimodal-generation, taskId={}, index={}, textLen={}",
                 taskId, index, dialogue.length());
 
-        // 模拟TTS结果
-        double estimatedDuration = dialogue.length() * 0.25; // 估算：每个字约0.25秒
+        // ============ Qwen-TTS multimodal-generation HTTP API ============
+        try {
+            // 从 Nacos 配置读取模型
+            String model = "qwen3-tts-flash";
+            String voice = "Cherry";  // qwen3-tts-flash 预设音色：阳光积极、亲切自然小姐姐
 
-        return TTSResultDTO.builder()
-                .taskId(taskId)
-                .sceneIndex(index)
-                .audioUrl(String.format("https://cdn.example.com/tts/%d/scene_%d.mp3", taskId, index))
-                .duration(estimatedDuration)
-                .costTime(1500L)
-                .build();
+            String requestBody = String.format("""
+                    {
+                        "model": "%s",
+                        "input": {
+                            "text": "%s",
+                            "voice": "%s"
+                        },
+                        "parameters": {
+                            "volume": 80,
+                            "speed": 1.0
+                        }
+                    }
+                    """, model, escapeJson(dialogue), voice);
+
+            // 调用 multimodal-generation 端点
+            HttpResponse response = HttpRequest.post(
+                            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+                    .header("Authorization", "Bearer " + dashScopeApiKey)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .timeout(120000)
+                    .execute();
+
+            if (!response.isOk()) {
+                String errorBody = response.body();
+                log.error("[EnhanceAgent-TTS] HTTP请求失败, status={}, body={}", response.getStatus(), errorBody);
+                throw new RuntimeException("TTS HTTP请求失败: " + response.getStatus() + " - " + errorBody);
+            }
+
+            // 响应为 JSON，解析获取音频 URL
+            String respBody = response.body();
+            Map<String, Object> respMap = objectMapper.readValue(respBody, new TypeReference<>() {});
+            Map<String, Object> output = (Map<String, Object>) respMap.get("output");
+            Map<String, Object> audio = (Map<String, Object>) output.get("audio");
+            String audioUrl = (String) audio.get("url");
+
+            if (audioUrl == null) {
+                throw new RuntimeException("TTS响应中未找到音频URL: " + respBody);
+            }
+
+            // 下载音频到本地
+            String localPath = downloadToLocalStorage(audioUrl, taskId, "tts", index);
+
+            long costTime = System.currentTimeMillis() - startTime;
+            log.info("[EnhanceAgent-TTS] TTS合成完成, taskId={}, index={}, localPath={}, costTime={}ms",
+                    taskId, index, localPath, costTime);
+
+            return TTSResultDTO.builder()
+                    .taskId(taskId)
+                    .sceneIndex(index)
+                    .audioUrl(localPath)
+                    .duration(0.0)   // 实际时长由播放端确定
+                    .costTime(costTime)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("[EnhanceAgent-TTS] TTS调用失败, taskId={}, index={}", taskId, index, e);
+            throw new RuntimeException("TTS语音合成失败: " + e.getMessage(), e);
+        }
     }
+
+    // ==================== 文件存储辅助方法 ====================
+
+    /**
+     * 从URL下载文件到本地存储
+     */
+    private String downloadToLocalStorage(String url, Long taskId, String type, Integer index) {
+        if (StrUtil.isBlank(url)) {
+            log.warn("[AgentService] downloadToLocalStorage url为空, taskId={}, type={}, index={}", taskId, type, index);
+            return null;
+        }
+
+        String ext = determineFileExtension(url);
+        String dir = storageDir + File.separator + type + File.separator + "task_" + taskId;
+        FileUtil.mkdir(dir);
+        String localPath = dir + File.separator + type + "_" + index + ext;
+
+        try {
+            long fileSize = HttpUtil.downloadFile(url, localPath);
+            log.info("[AgentService] 文件下载成功, url={} -> localPath={}, size={}bytes", url, localPath, fileSize);
+        } catch (Exception e) {
+            log.error("[AgentService] 文件下载失败, url={}, localPath={}", url, localPath, e);
+            return url; // 下载失败时返回原始URL作为降级
+        }
+        return localPath;
+    }
+
+    /**
+     * 将TTS音频字节保存到本地存储
+     */
+    private String saveAudioToLocalStorage(byte[] audioBytes, Long taskId, Integer index) {
+        String dir = storageDir + File.separator + "tts" + File.separator + "task_" + taskId;
+        FileUtil.mkdir(dir);
+        String localPath = dir + File.separator + "tts_" + index + ".mp3";
+        FileUtil.writeBytes(audioBytes, localPath);
+        log.info("[AgentService] TTS音频保存成功, localPath={}, size={}bytes", localPath, audioBytes.length);
+        return localPath;
+    }
+
+    /**
+     * 根据URL确定文件扩展名
+     */
+    private String determineFileExtension(String url) {
+        if (StrUtil.isBlank(url)) return ".png";
+        String lowerUrl = url.toLowerCase();
+        if (lowerUrl.contains(".png")) return ".png";
+        if (lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg")) return ".jpg";
+        if (lowerUrl.contains(".webp")) return ".webp";
+        if (lowerUrl.contains(".mp3")) return ".mp3";
+        return ".png";
+    }
+
+    /**
+     * 转义 JSON 字符串中的特殊字符
+     */
+    private String escapeJson(String text) {
+        if (text == null) return "";
+        return text.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
+    }
+
 }
