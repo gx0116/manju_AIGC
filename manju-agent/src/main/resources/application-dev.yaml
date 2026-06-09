@@ -19,13 +19,3 @@ mj:
           timeout-ms: 20000
     memory:
       max: 100
-
-# ========== DashScope 图像生成配置 ==========
-# 默认 wanx-v1 是异步模型（需轮询等待），易超时报 "Image generation still pending"
-# 改用 qwen-image 同步模型，直接返回图片 URL，无需轮询
-spring:
-  ai:
-    dashscope:
-      image:
-        options:
-          model: qwen-image

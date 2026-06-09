@@ -193,8 +193,9 @@ public class DirectorService {
     }
 
     /**
-     * 调用增强Agent - 文生漫画
+     * 调用增强Agent - 文生漫画（异步submit + 轮询）
      */
+    @SuppressWarnings("unchecked")
     private List<ComicGenResultDTO> generateComicImages(Long taskId,
                                                          List<StoryboardDTO.StoryboardScene> scenes,
                                                          ArtStyleEnum artStyle, String promptConfig) {
@@ -206,16 +207,60 @@ public class DirectorService {
         params.put("type", "comic_gen");
         params.put("scenes", scenes);
 
-        Result<List<ComicGenResultDTO>> result = agentClient.generateComic(params);
-        if (result == null || result.getCode() != 200) {
-            throw new RuntimeException("增强Agent漫画生成失败: " + (result != null ? result.getMsg() : "无响应"));
+        // 1. 提交异步任务
+        Result<Map<String, Object>> submitResult = agentClient.submitComic(params);
+        if (submitResult == null || submitResult.getCode() != 200) {
+            throw new RuntimeException("提交漫画生成任务失败: " + (submitResult != null ? submitResult.getMsg() : "无响应"));
         }
-        return result.getData();
+        log.info("[Director] 漫画任务已提交, taskId={}", taskId);
+
+        // 2. 轮询直到完成
+        return pollComicResult(taskId);
     }
 
     /**
-     * 调用增强Agent - TTS语音合成
+     * 轮询漫画生成结果
      */
+    @SuppressWarnings("unchecked")
+    private List<ComicGenResultDTO> pollComicResult(Long taskId) {
+        int maxRetries = 300; // 最多轮询300次（300 * 3秒 = 15分钟）
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("轮询被中断", e);
+            }
+
+            Result<Map<String, Object>> statusResult = agentClient.getComicStatus(taskId);
+            if (statusResult == null || statusResult.getCode() != 200 || statusResult.getData() == null) {
+                log.warn("[Director] 漫画状态查询异常, taskId={}, retry={}", taskId, i);
+                continue;
+            }
+
+            String status = (String) statusResult.getData().get("status");
+            log.info("[Director] 漫画状态轮询, taskId={}, status={}, retry={}", taskId, status, i);
+
+            if ("COMPLETED".equals(status)) {
+                Object data = statusResult.getData().get("data");
+                // 统一使用 ObjectMapper 转换，避免 ClassCastException
+                List<ComicGenResultDTO> results = objectMapper.convertValue(data,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, ComicGenResultDTO.class));
+                log.info("[Director] 漫画结果转换成功, taskId={}, count={}", taskId, results.size());
+                return results;
+            } else if ("FAILED".equals(status)) {
+                String error = (String) statusResult.getData().get("error");
+                throw new RuntimeException("漫画生成失败: " + error);
+            }
+            // PROCESSING 或 NOT_FOUND，继续轮询
+        }
+        throw new RuntimeException("漫画生成超时，taskId=" + taskId);
+    }
+
+    /**
+     * 调用增强Agent - TTS语音合成（异步submit + 轮询）
+     */
+    @SuppressWarnings("unchecked")
     private List<TTSResultDTO> generateTTSAudio(Long taskId,
                                                  List<StoryboardDTO.StoryboardScene> scenes) {
         Map<String, Object> params = new HashMap<>();
@@ -223,11 +268,53 @@ public class DirectorService {
         params.put("type", "tts");
         params.put("scenes", scenes);
 
-        Result<List<TTSResultDTO>> result = agentClient.generateTTS(params);
-        if (result == null || result.getCode() != 200) {
-            throw new RuntimeException("增强Agent TTS合成失败: " + (result != null ? result.getMsg() : "无响应"));
+        // 1. 提交异步任务
+        Result<Map<String, Object>> submitResult = agentClient.submitTTS(params);
+        if (submitResult == null || submitResult.getCode() != 200) {
+            throw new RuntimeException("提交TTS合成任务失败: " + (submitResult != null ? submitResult.getMsg() : "无响应"));
         }
-        return result.getData();
+        log.info("[Director] TTS任务已提交, taskId={}", taskId);
+
+        // 2. 轮询直到完成
+        return pollTTSResult(taskId);
+    }
+
+    /**
+     * 轮询TTS合成结果
+     */
+    @SuppressWarnings("unchecked")
+    private List<TTSResultDTO> pollTTSResult(Long taskId) {
+        int maxRetries = 300;
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("轮询被中断", e);
+            }
+
+            Result<Map<String, Object>> statusResult = agentClient.getTTSStatus(taskId);
+            if (statusResult == null || statusResult.getCode() != 200 || statusResult.getData() == null) {
+                log.warn("[Director] TTS状态查询异常, taskId={}, retry={}", taskId, i);
+                continue;
+            }
+
+            String status = (String) statusResult.getData().get("status");
+            log.info("[Director] TTS状态轮询, taskId={}, status={}, retry={}", taskId, status, i);
+
+            if ("COMPLETED".equals(status)) {
+                Object data = statusResult.getData().get("data");
+                // 统一使用 ObjectMapper 转换，避免 ClassCastException
+                List<TTSResultDTO> results = objectMapper.convertValue(data,
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, TTSResultDTO.class));
+                log.info("[Director] TTS结果转换成功, taskId={}, count={}", taskId, results.size());
+                return results;
+            } else if ("FAILED".equals(status)) {
+                String error = (String) statusResult.getData().get("error");
+                throw new RuntimeException("TTS合成失败: " + error);
+            }
+        }
+        throw new RuntimeException("TTS合成超时，taskId=" + taskId);
     }
 
     /**

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mj.agent.config.SystemPromptConfig;
 import com.mj.agent.service.AgentService;
+import com.mj.agent.service.AIGCTaskManager;
 import com.mj.common.domain.ComicGenResultDTO;
 import com.mj.common.domain.StoryboardDTO;
 import com.mj.common.domain.TTSResultDTO;
@@ -21,6 +22,7 @@ import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.image.ImageResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -42,10 +44,19 @@ public class AgentServiceImpl implements AgentService {
     private final ObjectMapper objectMapper;
     private final SystemPromptConfig systemPromptConfig;
     private final ImageModel imageModel;
+    private final AIGCTaskManager taskManager;
 
     /** DashScope API Key */
     @Value("${spring.ai.dashscope.api-key:}")
     private String dashScopeApiKey;
+
+    /** TTS 模型配置（从 Nacos 读取） */
+    @Value("${mj.ai.tts.model:qwen3-tts-flash}")
+    private String ttsModel;
+
+    /** TTS 音色配置（从 Nacos 读取） */
+    @Value("${mj.ai.tts.voice:Cherry}")
+    private String ttsVoice;
 
     /** 媒体文件本地存储目录 */
     @Value("${mj.media.storage-dir:/tmp/manju-media}")
@@ -54,11 +65,13 @@ public class AgentServiceImpl implements AgentService {
     public AgentServiceImpl(ChatClient.Builder chatClientBuilder,
                             ObjectMapper objectMapper,
                             SystemPromptConfig systemPromptConfig,
-                            ImageModel imageModel) {
+                            ImageModel imageModel,
+                            AIGCTaskManager taskManager) {
         this.chatClientBuilder = chatClientBuilder;
         this.objectMapper = objectMapper;
         this.systemPromptConfig = systemPromptConfig;
         this.imageModel = imageModel;
+        this.taskManager = taskManager;
     }
 
     // ==================== ScriptAgent: 分镜生成 ====================
@@ -362,9 +375,8 @@ public class AgentServiceImpl implements AgentService {
 
         // ============ Qwen-TTS multimodal-generation HTTP API ============
         try {
-            // 从 Nacos 配置读取模型
-            String model = "qwen3-tts-flash";
-            String voice = "Cherry";  // qwen3-tts-flash 预设音色：阳光积极、亲切自然小姐姐
+            // 从 Nacos 配置读取模型和音色
+            log.info("[EnhanceAgent-TTS] 使用TTS配置, model={}, voice={}", ttsModel, ttsVoice);
 
             String requestBody = String.format("""
                     {
@@ -378,7 +390,7 @@ public class AgentServiceImpl implements AgentService {
                             "speed": 1.0
                         }
                     }
-                    """, model, escapeJson(dialogue), voice);
+                    """, ttsModel, escapeJson(dialogue), ttsVoice);
 
             // 调用 multimodal-generation 端点
             HttpResponse response = HttpRequest.post(
@@ -488,6 +500,56 @@ public class AgentServiceImpl implements AgentService {
                    .replace("\n", "\\n")
                    .replace("\r", "\\r")
                    .replace("\t", "\\t");
+    }
+
+    // ==================== 异步任务方法 ====================
+
+    /**
+     * 异步生成漫画图片（后台线程执行，结果写入Redis）
+     * <p>
+     * 解决HTTP长连接超时问题：前端提交任务后立即返回，
+     * 通过 /agent/enhance/comic/status 轮询获取结果。
+     */
+    @Override
+    @Async("aigcTaskExecutor")
+    public void generateComicImagesAsync(Map<String, Object> params) {
+        Long taskId = Long.valueOf(params.get("taskId").toString());
+        log.info("[EnhanceAgent-Comic-Async] 异步漫画生成启动, taskId={}", taskId);
+        taskManager.markProcessing("comic", taskId);
+
+        try {
+            List<ComicGenResultDTO> results = generateComicImages(params);
+            taskManager.saveComicResult(taskId, results);
+            log.info("[EnhanceAgent-Comic-Async] 异步漫画生成完成, taskId={}, sceneCount={}",
+                    taskId, results.size());
+        } catch (Exception e) {
+            log.error("[EnhanceAgent-Comic-Async] 异步漫画生成失败, taskId={}", taskId, e);
+            taskManager.markFailed("comic", taskId, e.getMessage());
+        }
+    }
+
+    /**
+     * 异步TTS语音合成（后台线程执行，结果写入Redis）
+     * <p>
+     * 解决HTTP长连接超时问题：前端提交任务后立即返回，
+     * 通过 /agent/enhance/tts/status 轮询获取结果。
+     */
+    @Override
+    @Async("aigcTaskExecutor")
+    public void generateTTSAudioAsync(Map<String, Object> params) {
+        Long taskId = Long.valueOf(params.get("taskId").toString());
+        log.info("[EnhanceAgent-TTS-Async] 异步TTS合成启动, taskId={}", taskId);
+        taskManager.markProcessing("tts", taskId);
+
+        try {
+            List<TTSResultDTO> results = generateTTSAudio(params);
+            taskManager.saveTTSResult(taskId, results);
+            log.info("[EnhanceAgent-TTS-Async] 异步TTS合成完成, taskId={}, sceneCount={}",
+                    taskId, results.size());
+        } catch (Exception e) {
+            log.error("[EnhanceAgent-TTS-Async] 异步TTS合成失败, taskId={}", taskId, e);
+            taskManager.markFailed("tts", taskId, e.getMessage());
+        }
     }
 
 }

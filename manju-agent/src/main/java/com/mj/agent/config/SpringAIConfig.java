@@ -15,14 +15,34 @@ import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Duration;
+import java.util.concurrent.Executor;
 
 @Configuration
+@EnableAsync
 public class SpringAIConfig {
 
     @Value("${mj.ai.memory.max:100}")
     private Integer maxMessages;
+
+    /**
+     * AIGC 异步任务线程池（漫画生成/TTS合成等长耗时任务）
+     */
+    @Bean("aigcTaskExecutor")
+    public Executor aigcTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("aigc-task-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(60);
+        executor.initialize();
+        return executor;
+    }
 
     /**
      * RestClient 超时定制（DashScope API 通过 RestClient.Builder 构建，默认仅 10 秒）

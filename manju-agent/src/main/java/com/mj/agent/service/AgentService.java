@@ -18,12 +18,22 @@ public interface AgentService {
     StoryboardDTO generateStoryboard(Map<String, Object> params);
 
     /**
-     * EnhancementAgent - Liblib文生漫画图片
+     * EnhancementAgent - Liblib文生漫画图片（同步，直接返回结果）
      */
     List<ComicGenResultDTO> generateComicImages(Map<String, Object> params);
 
     /**
-     * EnhancementAgent - Azure TTS语音合成
+     * EnhancementAgent - 文生漫画（异步，结果写入Redis，通过轮询接口获取）
+     */
+    void generateComicImagesAsync(Map<String, Object> params);
+
+    /**
+     * EnhancementAgent - Azure TTS语音合成（同步，直接返回结果）
      */
     List<TTSResultDTO> generateTTSAudio(Map<String, Object> params);
+
+    /**
+     * EnhancementAgent - TTS语音合成（异步，结果写入Redis，通过轮询接口获取）
+     */
+    void generateTTSAudioAsync(Map<String, Object> params);
 }
