@@ -13,6 +13,7 @@ import com.mj.agent.service.AIGCTaskManager;
 import com.mj.common.domain.ComicGenResultDTO;
 import com.mj.common.domain.StoryboardDTO;
 import com.mj.common.domain.TTSResultDTO;
+import com.mj.common.domain.VideoGenResultDTO;
 import com.mj.common.enums.ArtStyleEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -57,6 +58,26 @@ public class AgentServiceImpl implements AgentService {
     /** TTS 音色配置（从 Nacos 读取） */
     @Value("${mj.ai.tts.voice:Cherry}")
     private String ttsVoice;
+
+    /** 文生视频模型（从 Nacos 读取，默认 wanx2.1-t2v-turbo 有免费额度） */
+    @Value("${mj.ai.video.model:wanx2.1-t2v-turbo}")
+    private String videoModel;
+
+    /** 视频分辨率 */
+    @Value("${mj.ai.video.resolution:720P}")
+    private String videoResolution;
+
+    /** 视频宽高比 */
+    @Value("${mj.ai.video.ratio:16:9}")
+    private String videoRatio;
+
+    /** 单个镜头视频时长（秒） */
+    @Value("${mj.ai.video.duration:4}")
+    private Integer videoDuration;
+
+    /** DashScope 文生视频 API 端点 */
+    @Value("${mj.ai.video.endpoint:https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis}")
+    private String videoEndpoint;
 
     /** 媒体文件本地存储目录 */
     @Value("${mj.media.storage-dir:/tmp/manju-media}")
@@ -483,6 +504,275 @@ public class AgentServiceImpl implements AgentService {
         }
     }
 
+    // ==================== EnhancementAgent: 文生视频 ====================
+
+    @Override
+    public List<VideoGenResultDTO> generateVideo(Map<String, Object> params) {
+        Long taskId = Long.valueOf(params.get("taskId").toString());
+        String style = (String) params.get("style");
+        String promptKey = (String) params.get("promptKey");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> scenesList = (List<Map<String, Object>>) params.get("scenes");
+
+        if (scenesList == null || scenesList.isEmpty()) {
+            throw new RuntimeException("分镜列表为空，无法生成视频");
+        }
+
+        log.info("[EnhanceAgent-Video] 开始文生视频, taskId={}, sceneCount={}, model={}",
+                taskId, scenesList.size(), videoModel);
+
+        List<VideoGenResultDTO> results = new ArrayList<>();
+
+        // 逐镜头调用文生视频API
+        for (Map<String, Object> scene : scenesList) {
+            Integer index = (Integer) scene.get("index");
+            String imagePrompt = (String) scene.get("imagePrompt");
+
+            try {
+                VideoGenResultDTO result = generateSingleVideo(taskId, index, imagePrompt, style, promptKey);
+                results.add(result);
+                log.info("[EnhanceAgent-Video] 镜头{}视频生成完成, taskId={}, url={}",
+                        index, taskId, result.getVideoUrl());
+            } catch (Exception e) {
+                log.error("[EnhanceAgent-Video] 镜头{}视频生成失败, taskId={}", index, taskId, e);
+                results.add(VideoGenResultDTO.builder()
+                        .taskId(taskId)
+                        .sceneIndex(index)
+                        .videoUrl(null)
+                        .build());
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * 生成单个镜头的短视频
+     * <p>
+     * 通过 DashScope 通义万相文生视频 API，异步创建任务 → 轮询等待 → 下载视频
+     */
+    private VideoGenResultDTO generateSingleVideo(Long taskId, Integer index,
+                                                    String imagePrompt, String style, String promptKey) {
+        long startTime = System.currentTimeMillis();
+
+        // 构建增强的 videoPrompt（融合画风描述+动态运镜）
+        String videoPrompt = enhanceVideoPrompt(imagePrompt, style, promptKey);
+
+        log.info("[EnhanceAgent-Video] 调用DashScope文生视频, taskId={}, index={}, model={}, promptLen={}",
+                taskId, index, videoModel, videoPrompt.length());
+
+        try {
+            // ============ Step 1: 创建异步任务 ============
+            // wanx2.1 系列模型不支持 duration 参数（固定5秒），仅 wan2.7+ 支持
+            String requestBody;
+            if (videoModel != null && videoModel.startsWith("wan2.")) {
+                // wan2.7 新版协议，支持 duration 自定义
+                requestBody = String.format("""
+                    {
+                        "model": "%s",
+                        "input": {
+                            "prompt": "%s"
+                        },
+                        "parameters": {
+                            "resolution": "%s",
+                            "ratio": "%s",
+                            "prompt_extend": true,
+                            "duration": %d
+                        }
+                    }
+                    """, videoModel, escapeJson(videoPrompt), videoResolution, videoRatio, videoDuration);
+            } else {
+                // wanx2.1 旧版，不支持 duration，固定5秒
+                requestBody = String.format("""
+                    {
+                        "model": "%s",
+                        "input": {
+                            "prompt": "%s"
+                        },
+                        "parameters": {
+                            "resolution": "%s",
+                            "ratio": "%s",
+                            "prompt_extend": true
+                        }
+                    }
+                    """, videoModel, escapeJson(videoPrompt), videoResolution, videoRatio);
+            }
+
+            HttpResponse createResp = HttpRequest.post(videoEndpoint)
+                    .header("Authorization", "Bearer " + dashScopeApiKey)
+                    .header("Content-Type", "application/json")
+                    .header("X-DashScope-Async", "enable")
+                    .body(requestBody)
+                    .timeout(30000)
+                    .execute();
+
+            if (!createResp.isOk()) {
+                String errorBody = createResp.body();
+                log.error("[EnhanceAgent-Video] 创建任务失败, status={}, body={}", createResp.getStatus(), errorBody);
+                throw new RuntimeException("文生视频任务创建失败: " + createResp.getStatus() + " - " + errorBody);
+            }
+
+            // 解析 task_id
+            String createBody = createResp.body();
+            Map<String, Object> createMap = objectMapper.readValue(createBody, new TypeReference<>() {});
+            Map<String, Object> output = (Map<String, Object>) createMap.get("output");
+            String dashTaskId = (String) output.get("task_id");
+
+            if (dashTaskId == null) {
+                throw new RuntimeException("文生视频响应中未找到task_id: " + createBody);
+            }
+            log.info("[EnhanceAgent-Video] 任务已创建, taskId={}, index={}, dashTaskId={}", taskId, index, dashTaskId);
+
+            // ============ Step 2: 轮询等待完成 ============
+            String videoUrl = pollVideoTask(dashTaskId, taskId, index);
+
+            // ============ Step 3: 下载到本地存储 ============
+            String localPath = downloadToLocalStorage(videoUrl, taskId, "video", index);
+
+            long costTime = System.currentTimeMillis() - startTime;
+            log.info("[EnhanceAgent-Video] 视频生成完成, taskId={}, index={}, localPath={}, costTime={}ms",
+                    taskId, index, localPath, costTime);
+
+            return VideoGenResultDTO.builder()
+                    .taskId(taskId)
+                    .sceneIndex(index)
+                    .videoUrl(localPath)
+                    .duration(isWan27Model() ? videoDuration : 5)
+                    .width(determineVideoWidth())
+                    .height(determineVideoHeight())
+                    .costTime(costTime)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("[EnhanceAgent-Video] 视频生成异常, taskId={}, index={}", taskId, index, e);
+            throw new RuntimeException("文生视频失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 轮询DashScope视频任务直到完成
+     * <p>
+     * 状态流转：PENDING → RUNNING → SUCCEEDED / FAILED
+     */
+    private String pollVideoTask(String dashTaskId, Long taskId, Integer index) {
+        String queryUrl = "https://dashscope.aliyuncs.com/api/v1/tasks/" + dashTaskId;
+        int maxRetries = 120; // 最多轮询120次（120 * 5秒 = 10分钟）
+
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                Thread.sleep(5000); // 每5秒轮询一次
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("视频任务轮询被中断", e);
+            }
+
+            try {
+                HttpResponse queryResp = HttpRequest.get(queryUrl)
+                        .header("Authorization", "Bearer " + dashScopeApiKey)
+                        .timeout(10000)
+                        .execute();
+
+                if (!queryResp.isOk()) {
+                    log.warn("[EnhanceAgent-Video] 查询任务状态失败, dashTaskId={}, status={}, retry={}",
+                            dashTaskId, queryResp.getStatus(), i);
+                    continue;
+                }
+
+                String queryBody = queryResp.body();
+                Map<String, Object> queryMap = objectMapper.readValue(queryBody, new TypeReference<>() {});
+                Map<String, Object> queryOutput = (Map<String, Object>) queryMap.get("output");
+                String taskStatus = (String) queryOutput.get("task_status");
+
+                log.info("[EnhanceAgent-Video] 任务状态轮询, taskId={}, index={}, dashTaskId={}, status={}, retry={}",
+                        taskId, index, dashTaskId, taskStatus, i);
+
+                if ("SUCCEEDED".equals(taskStatus)) {
+                    String videoUrl = (String) queryOutput.get("video_url");
+                    if (videoUrl == null) {
+                        // 某些模型版本可能用 results 字段
+                        Object results = queryOutput.get("results");
+                        if (results instanceof List && !((List<?>) results).isEmpty()) {
+                            Map<String, Object> firstResult = (Map<String, Object>) ((List<?>) results).get(0);
+                            videoUrl = (String) firstResult.get("video_url");
+                        }
+                    }
+                    if (videoUrl == null) {
+                        throw new RuntimeException("视频任务成功但未返回video_url: " + queryBody);
+                    }
+                    log.info("[EnhanceAgent-Video] 视频生成成功, dashTaskId={}, videoUrl={}", dashTaskId, videoUrl);
+                    return videoUrl;
+                } else if ("FAILED".equals(taskStatus)) {
+                    String errorMsg = (String) queryOutput.get("message");
+                    if (errorMsg == null) errorMsg = (String) queryOutput.get("code");
+                    throw new RuntimeException("视频生成失败: " + (errorMsg != null ? errorMsg : "未知错误"));
+                }
+                // PENDING / RUNNING → 继续轮询
+
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("[EnhanceAgent-Video] 轮询异常, dashTaskId={}, retry={}", dashTaskId, i, e);
+            }
+        }
+
+        throw new RuntimeException("视频生成超时，dashTaskId=" + dashTaskId);
+    }
+
+    /**
+     * 增强视频Prompt - 添加画风+动态描述
+     */
+    private String enhanceVideoPrompt(String basePrompt, String style, String promptKey) {
+        // 动态运镜描述
+        String cameraMotion = "cinematic camera movement, smooth panning, dynamic shots";
+
+        String styleModifier = switch (promptKey != null ? promptKey : "") {
+            case "anime_style" ->
+                    "anime style, vibrant colors, fluid animation, Studio Ghibli inspired, " + cameraMotion + ", " + basePrompt;
+            case "realistic_style" ->
+                    "photorealistic, 8K, cinematic lighting, film grain, " + cameraMotion + ", " + basePrompt;
+            case "chinese_style" ->
+                    "traditional Chinese ink painting animation, watercolor flow, elegant motion, " + cameraMotion + ", " + basePrompt;
+            case "cartoon_style" ->
+                    "cartoon style, bright colors, bouncy animation, fun motion, " + cameraMotion + ", " + basePrompt;
+            default -> cameraMotion + ", " + basePrompt;
+        };
+        return styleModifier;
+    }
+
+    /**
+     * 根据配置的分辨率确定视频宽度
+     */
+    private Integer determineVideoWidth() {
+        if ("720P".equalsIgnoreCase(videoResolution)) {
+            return "9:16".equals(videoRatio) ? 720 : "1:1".equals(videoRatio) ? 960 :
+                   "4:3".equals(videoRatio) ? 1104 : "3:4".equals(videoRatio) ? 832 : 1280;
+        }
+        // 1080P
+        return "9:16".equals(videoRatio) ? 1080 : "1:1".equals(videoRatio) ? 1440 :
+               "4:3".equals(videoRatio) ? 1648 : "3:4".equals(videoRatio) ? 1248 : 1920;
+    }
+
+    /**
+     * 根据配置的分辨率确定视频高度
+     */
+    private Integer determineVideoHeight() {
+        if ("720P".equalsIgnoreCase(videoResolution)) {
+            return "9:16".equals(videoRatio) ? 1280 : "1:1".equals(videoRatio) ? 960 :
+                   "4:3".equals(videoRatio) ? 832 : "3:4".equals(videoRatio) ? 1104 : 720;
+        }
+        // 1080P
+        return "9:16".equals(videoRatio) ? 1920 : "1:1".equals(videoRatio) ? 1440 :
+               "4:3".equals(videoRatio) ? 1248 : "3:4".equals(videoRatio) ? 1648 : 1080;
+    }
+
+    /**
+     * 判断是否为 wan2.7+ 新协议模型（支持 duration 自定义）
+     */
+    private boolean isWan27Model() {
+        return videoModel != null && videoModel.startsWith("wan2.");
+    }
+
     // ==================== 文件存储辅助方法 ====================
 
     /**
@@ -530,9 +820,10 @@ public class AgentServiceImpl implements AgentService {
         if (lowerUrl.contains(".png")) return ".png";
         if (lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg")) return ".jpg";
         if (lowerUrl.contains(".webp")) return ".webp";
+        if (lowerUrl.contains(".mp4")) return ".mp4";
         if (lowerUrl.contains(".mp3")) return ".mp3";
         if (lowerUrl.contains(".wav")) return ".wav";
-        return ".png";
+        return ".mp4";  // 默认视频格式
     }
 
     /**
@@ -594,6 +885,30 @@ public class AgentServiceImpl implements AgentService {
         } catch (Exception e) {
             log.error("[EnhanceAgent-TTS-Async] 异步TTS合成失败, taskId={}", taskId, e);
             taskManager.markFailed("tts", taskId, e.getMessage());
+        }
+    }
+
+    /**
+     * 异步文生视频（后台线程执行，结果写入Redis）
+     * <p>
+     * 解决HTTP长连接超时问题：前端提交任务后立即返回，
+     * 通过 /agent/enhance/video/status 轮询获取结果。
+     */
+    @Override
+    @Async("aigcTaskExecutor")
+    public void generateVideoAsync(Map<String, Object> params) {
+        Long taskId = Long.valueOf(params.get("taskId").toString());
+        log.info("[EnhanceAgent-Video-Async] 异步文生视频启动, taskId={}", taskId);
+        taskManager.markProcessing("video", taskId);
+
+        try {
+            List<VideoGenResultDTO> results = generateVideo(params);
+            taskManager.saveVideoResult(taskId, results);
+            log.info("[EnhanceAgent-Video-Async] 异步文生视频完成, taskId={}, sceneCount={}",
+                    taskId, results.size());
+        } catch (Exception e) {
+            log.error("[EnhanceAgent-Video-Async] 异步文生视频失败, taskId={}", taskId, e);
+            taskManager.markFailed("video", taskId, e.getMessage());
         }
     }
 

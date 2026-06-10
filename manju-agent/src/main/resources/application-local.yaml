@@ -17,3 +17,15 @@ mj:
           data-id: system-chat--message.txt
           group: DEFAULT_GROUP
           timeout-ms: 20000
+    # TTS语音合成配置
+    tts:
+      model: qwen3-tts-flash
+      voice: Cherry
+    # 文生视频配置（通义万相 DashScope）
+    video:
+      # 模型：wanx2.1-t2v-turbo（快速版，免费200秒） / wanx2.1-t2v-plus（高品质） / wan2.7-t2v（最新版）
+      model: wanx2.1-t2v-turbo
+      resolution: 720P
+      ratio: "16:9"
+      duration: 4
+      endpoint: https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis

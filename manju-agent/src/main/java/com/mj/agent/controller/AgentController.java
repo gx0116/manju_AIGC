@@ -129,6 +129,55 @@ public class AgentController {
         return Result.success(resp);
     }
 
+    // ==================== 文生视频（异步模式） ====================
+
+    /**
+     * 提交文生视频任务（异步）
+     * <p>
+     * 立即返回，后台异步处理。前端通过 /enhance/video/status?taskId=xx 轮询结果。
+     */
+    @PostMapping("/enhance/video/submit")
+    public Result<Map<String, Object>> submitVideo(@RequestBody Map<String, Object> params) {
+        Long taskId = Long.valueOf(params.get("taskId").toString());
+        log.info("[AgentController] 提交文生视频异步任务, taskId={}", taskId);
+
+        // 检查是否有正在进行的任务
+        String currentStatus = taskManager.getStatus("video", taskId);
+        if ("PROCESSING".equals(currentStatus)) {
+            return Result.error(409, "视频生成任务正在处理中，请勿重复提交");
+        }
+
+        // 标记为处理中并异步执行
+        agentService.generateVideoAsync(params);
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("taskId", taskId);
+        resp.put("status", "PROCESSING");
+        resp.put("message", "视频生成任务已提交，请通过 /enhance/video/status 轮询结果");
+        return Result.success(resp);
+    }
+
+    /**
+     * 查询文生视频任务状态和结果
+     */
+    @GetMapping("/enhance/video/status")
+    public Result<Map<String, Object>> getVideoStatus(@RequestParam Long taskId) {
+        String status = taskManager.getStatus("video", taskId);
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("taskId", taskId);
+        resp.put("status", status != null ? status : "NOT_FOUND");
+
+        if ("COMPLETED".equals(status)) {
+            List<VideoGenResultDTO> results = taskManager.getVideoResult(taskId);
+            resp.put("data", results);
+        } else if ("FAILED".equals(status)) {
+            resp.put("error", taskManager.getError("video", taskId));
+        }
+
+        return Result.success(resp);
+    }
+
     // ==================== 旧同步接口（已改为异步模式，向后兼容） ====================
 
     /**

@@ -47,4 +47,18 @@ public interface AgentClient {
      */
     @GetMapping("/agent/enhance/tts/status")
     Result<Map<String, Object>> getTTSStatus(@RequestParam("taskId") Long taskId);
+
+    // ==================== 文生视频异步任务接口 ====================
+
+    /**
+     * 提交文生视频任务（异步，立即返回）
+     */
+    @PostMapping("/agent/enhance/video/submit")
+    Result<Map<String, Object>> submitVideo(@RequestBody Map<String, Object> params);
+
+    /**
+     * 查询文生视频任务状态和结果
+     */
+    @GetMapping("/agent/enhance/video/status")
+    Result<Map<String, Object>> getVideoStatus(@RequestParam("taskId") Long taskId);
 }

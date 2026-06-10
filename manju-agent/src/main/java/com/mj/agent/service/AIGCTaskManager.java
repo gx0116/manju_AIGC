@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mj.common.domain.ComicGenResultDTO;
 import com.mj.common.domain.TTSResultDTO;
+import com.mj.common.domain.VideoGenResultDTO;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +64,23 @@ public class AIGCTaskManager {
     }
 
     /**
+     * 保存视频生成成功结果
+     */
+    public void saveVideoResult(Long taskId, List<VideoGenResultDTO> results) {
+        String key = buildKey("video", taskId);
+        stringRedisTemplate.opsForHash().put(key, "status", "COMPLETED");
+        stringRedisTemplate.opsForHash().put(key, "endTime", String.valueOf(System.currentTimeMillis()));
+        try {
+            stringRedisTemplate.opsForHash().put(key, "result", objectMapper.writeValueAsString(results));
+        } catch (JsonProcessingException e) {
+            log.error("[AIGCTaskManager] 视频结果序列化失败, taskId={}", taskId, e);
+            stringRedisTemplate.opsForHash().put(key, "status", "FAILED");
+            stringRedisTemplate.opsForHash().put(key, "error", "结果序列化失败: " + e.getMessage());
+        }
+        stringRedisTemplate.expire(key, TTL_HOURS, TimeUnit.HOURS);
+    }
+
+    /**
      * 保存TTS成功结果
      */
     public void saveTTSResult(Long taskId, List<TTSResultDTO> results) {
@@ -113,6 +131,22 @@ public class AIGCTaskManager {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, ComicGenResultDTO.class));
         } catch (JsonProcessingException e) {
             log.error("[AIGCTaskManager] 漫画结果反序列化失败, taskId={}", taskId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 获取视频结果
+     */
+    public List<VideoGenResultDTO> getVideoResult(Long taskId) {
+        String key = buildKey("video", taskId);
+        Object json = stringRedisTemplate.opsForHash().get(key, "result");
+        if (json == null) return null;
+        try {
+            return objectMapper.readValue(json.toString(),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, VideoGenResultDTO.class));
+        } catch (JsonProcessingException e) {
+            log.error("[AIGCTaskManager] 视频结果反序列化失败, taskId={}", taskId, e);
             return null;
         }
     }
