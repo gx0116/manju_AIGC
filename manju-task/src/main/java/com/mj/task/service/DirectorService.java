@@ -64,12 +64,12 @@ public class DirectorService {
      * 编排核心流程
      */
     private void orchestrate(Map<String, Object> message) {
-        Long taskId = Long.valueOf(message.get("taskId").toString());
-        String title = (String) message.get("title");
-        String description = (String) message.get("description");
-        Integer style = (Integer) message.get("style");
-        Integer contentType = (Integer) message.get("contentType");
-        String mainCharacters = (String) message.get("mainCharacters");
+        Long taskId = Long.valueOf(message.get("taskId").toString());// 任务ID
+        String title = (String) message.get("title");// 标题
+        String description = (String) message.get("description");// 描述
+        Integer style = (Integer) message.get("style");// 画风枚举
+        Integer contentType = (Integer) message.get("contentType");// 内容类型枚举
+        String mainCharacters = (String) message.get("mainCharacters");// 主要角色
         // userId 可能为 null（未登录/测试场景），安全转换
         Long userId = cn.hutool.core.convert.Convert.toLong(message.get("userId"), 0L);
 

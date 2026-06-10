@@ -132,20 +132,20 @@ public class AgentController {
     // ==================== 旧同步接口（已改为异步模式，向后兼容） ====================
 
     /**
-     * 漫画生成（已改为异步：提交后立即返回，通过 /enhance/comic/status 轮询结果）
+     * 漫画生成
      */
     @PostMapping("/enhance/comic")
-    public Result<Map<String, Object>> generateComic(@RequestBody Map<String, Object> params) {
+    public List<ComicGenResultDTO> generateComic(@RequestBody Map<String, Object> params) {
         log.info("[AgentController] 收到漫画生成请求, taskId={}", params.get("taskId"));
-        return submitComic(params);  // 委托给异步提交
+        return agentService.generateComicImages(params);
     }
 
     /**
-     * TTS合成（已改为异步：提交后立即返回，通过 /enhance/tts/status 轮询结果）
+     * TTS合成
      */
     @PostMapping("/enhance/tts")
-    public Result<Map<String, Object>> generateTTS(@RequestBody Map<String, Object> params) {
+    public List<TTSResultDTO> generateTTS(@RequestBody Map<String, Object> params) {
         log.info("[AgentController] 收到TTS合成请求, taskId={}", params.get("taskId"));
-        return submitTTS(params);  // 委托给异步提交
+        return agentService.generateTTSAudio(params);
     }
 }

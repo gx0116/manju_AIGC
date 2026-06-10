@@ -116,45 +116,84 @@ public class AgentServiceImpl implements AgentService {
      * 构建分镜生成的System Prompt
      */
     private String buildStoryboardSystemPrompt(String style, String promptKey) {
-        // 根据画风选择不同的分镜Prompt模板
         String basePrompt = """
-                你是一位专业的漫剧分镜师。请根据用户提供的剧情描述，生成标准化的漫剧分镜脚本。
-                
-                输出要求：
-                1. 返回严格的JSON格式，不要包含任何markdown标记
-                2. 分镜数量控制在6-12个镜头之间
-                3. 每个镜头必须包含：序号(index)、标题(title)、场景描述(description)、
-                   对白/旁白(dialogue)、画面描述(imagePrompt)、镜头类型(cameraType)、
-                   氛围(atmosphere)、时长(duration秒)
-                4. imagePrompt需要详细描述画面内容，用于后续AI文生图
-                5. cameraType可选值：近景/中景/远景/特写/全景
-                6. 对白需要自然流畅，符合角色性格
-                
-                JSON格式示例：
+            你是一位资深漫剧导演、分镜师，擅长创作短视频漫剧。
+            请根据用户需求，生成【专业、紧凑、有镜头感、适合AI生成画面】的分镜脚本。
+
+            输出严格规则：
+            1. 只返回标准JSON，无任何多余文字、无markdown
+            2. 分镜数量：8-12个镜头（节奏紧凑）
+            3. 单镜头时长：3-6秒，总时长控制在45-60秒
+            4. 每个镜头必须包含：
+               - index：序号
+               - title：镜头小标题
+               - description：剧情简述
+               - dialogue：对白/旁白（简洁有力）
+               - imagePrompt：**AI文生图专用提示词**（越详细越好，画风统一）
+               - cameraType：镜头类型（特写/中景/全景/远景/近景）
+               - atmosphere：氛围
+               - duration：时长（数字）
+
+            【imagePrompt 强制要求】
+            - 必须包含：画风、光影、色彩、构图、人物状态、场景细节
+            - 必须适合直接输入AI绘画（Stable Diffusion / Midjourney）
+            - 不要使用抽象词
+
+            【镜头节奏要求】
+            - 开场：吸引眼球
+            - 中间：剧情推进
+            - 结尾：留悬念
+
+            返回格式示例：
+            {
+              "sceneCount": 10,
+              "scenes": [
                 {
-                  "sceneCount": 8,
-                  "scenes": [
-                    {
-                      "index": 1,
-                      "title": "开场",
-                      "description": "阳光明媚的校园...",
-                      "dialogue": "今天真是个美好的早晨！",
-                      "imagePrompt": "二次元风格，阳光明媚的校园场景...",
-                      "cameraType": "全景",
-                      "atmosphere": "温暖明亮",
-                      "duration": 5.0
-                    }
-                  ]
+                  "index": 1,
+                  "title": "少年觉醒",
+                  "description": "小星在星辰遗迹中感受到力量涌动",
+                  "dialogue": "这是……星辰的力量？",
+                  "imagePrompt": "国风场景，少年站在星空遗迹中央，金色光芒环绕，云雾缭绕，东方神话美学，细节精致，光影唯美",
+                  "cameraType": "中景",
+                  "atmosphere": "神圣震撼",
+                  "duration": 4.0
                 }
+              ]
+            }
+            """;
+
+        // 风格强化指令（行业级优化）
+        String styleInstruction = switch (promptKey) {
+            case "anime_style" -> """
+                \n【风格强化：二次元动漫】
+                - 大眼睛、精致脸型、光影柔和
+                - 高饱和度、明快色彩
+                - 动态姿势、镜头张力强
                 """;
 
-        // 根据画风追加特定指令
-        String styleInstruction = switch (promptKey) {
-            case "anime_style" -> "请使用二次元动漫风格的分镜语言，注重夸张的表情和动作表现。";
-            case "realistic_style" -> "请使用写实风格的分镜语言，注重光影和真实感。";
-            case "chinese_style" -> "请使用中国风/国风的分镜语言，融入水墨意境和东方美学。";
-            case "cartoon_style" -> "请使用卡通风格的分镜语言，色彩明亮，构图简洁。";
-            default -> "请使用通用的分镜语言。";
+            case "realistic_style" -> """
+                \n【风格强化：写实风格】
+                - 真实人物比例、真实光影、电影质感
+                - 画面细腻、质感真实
+                - 镜头偏电影感
+                """;
+
+            case "chinese_style" -> """
+                \n【风格强化：中国风/国风】
+                - 东方美学、水墨意境、祥云、星辰、古风建筑
+                - 色彩典雅：青、金、蓝、白为主
+                - 服饰古风、仙气、飘逸、东方神韵
+                - 画面唯美、大气、史诗感
+                """;
+
+            case "cartoon_style" -> """
+                \n【风格强化：卡通风格】
+                - 造型Q版/可爱/简洁
+                - 色彩明亮、色块清晰
+                - 构图简单、轻松有趣
+                """;
+
+            default -> "";
         };
 
         return basePrompt + "\n" + styleInstruction;
@@ -164,17 +203,22 @@ public class AgentServiceImpl implements AgentService {
      * 构建分镜生成的User Input
      */
     private String buildStoryboardUserInput(String title, String description,
-                                             String mainCharacters, String style) {
+                                            String mainCharacters, String style) {
         return String.format("""
-                请为以下漫剧生成分镜脚本：
-                
-                标题：%s
-                剧情描述：%s
-                主要角色：%s
-                画风：%s
-                
-                请严格按照JSON格式输出分镜结果。
-                """, title, description, mainCharacters != null ? mainCharacters : "未指定", style);
+            请创作一集完整的漫剧分镜：
+            
+            漫剧标题：%s
+            剧情简介：%s
+            出场角色：%s
+            美术风格：%s
+            
+            请严格按照要求输出JSON格式分镜，确保imagePrompt可直接用于AI绘画。
+            """,
+                title,
+                description,
+                mainCharacters != null ? mainCharacters : "无",
+                style
+        );
     }
 
     /**
@@ -487,6 +531,7 @@ public class AgentServiceImpl implements AgentService {
         if (lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg")) return ".jpg";
         if (lowerUrl.contains(".webp")) return ".webp";
         if (lowerUrl.contains(".mp3")) return ".mp3";
+        if (lowerUrl.contains(".wav")) return ".wav";
         return ".png";
     }
 
